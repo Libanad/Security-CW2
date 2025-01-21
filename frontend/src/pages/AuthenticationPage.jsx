@@ -1,30 +1,33 @@
+import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Box, Checkbox, CircularProgress, CssBaseline, FormControlLabel, Grid, IconButton, InputAdornment, Paper, TextField, Typography } from '@mui/material';
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import ReCAPTCHA from "react-google-recaptcha"; // <-- Import reCAPTCHA
 import { useDispatch, useSelector } from 'react-redux';
-import { Grid, Box, Typography, Paper, Checkbox, FormControlLabel, TextField, CssBaseline, IconButton, InputAdornment, CircularProgress } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
-import { LightPurpleButton } from '../utils/buttonStyles';
-import { authUser } from '../redux/userHandle';
+import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
+import zxcvbn from 'zxcvbn'; // Password strength checker library
 import Popup from '../components/Popup';
+import { authUser } from '../redux/userHandle';
+import { LightPurpleButton } from '../utils/buttonStyles';
 
 const AuthenticationPage = ({ mode, role }) => {
 
-    const bgpic = "https://images.pexels.com/photos/1121097/pexels-photo-1121097.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
+    const bgpic = "https://images.pexels.com/photos/1121097/pexels-photo-1121097.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1";
+    const dispatch = useDispatch();
+    const navigate = useNavigate();
 
-    const dispatch = useDispatch()
-    const navigate = useNavigate()
+    const { status, currentUser, response, error, currentRole } = useSelector(state => state.user);
 
-    const { status, currentUser, response, error, currentRole } = useSelector(state => state.user);;
-
-    const [toggle, setToggle] = useState(false)
-    const [loader, setLoader] = useState(false)
+    const [toggle, setToggle] = useState(false);
+    const [loader, setLoader] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
     const [message, setMessage] = useState("");
+    const [captchaValue, setCaptchaValue] = useState(null); // Store captcha value
 
     const [emailError, setEmailError] = useState(false);
     const [passwordError, setPasswordError] = useState(false);
+    const [passwordStrength, setPasswordStrength] = useState("");
     const [userNameError, setUserNameError] = useState(false);
     const [shopNameError, setShopNameError] = useState(false);
 
@@ -40,11 +43,17 @@ const AuthenticationPage = ({ mode, role }) => {
             return;
         }
 
+        if (!captchaValue) {  // Check if CAPTCHA is completed
+            setMessage("Please complete the CAPTCHA.");
+            setShowPopup(true);
+            return;
+        }
+
         if (mode === "Register") {
             const name = event.target.userName.value;
 
             if (!name) {
-                if (!name) setUserNameError(true);
+                setUserNameError(true);
                 return;
             }
 
@@ -52,47 +61,54 @@ const AuthenticationPage = ({ mode, role }) => {
                 const shopName = event.target.shopName.value;
 
                 if (!shopName) {
-                    if (!shopName) setShopNameError(true);
+                    setShopNameError(true);
                     return;
                 }
 
-                const sellerFields = { name, email, password, role, shopName }
-                dispatch(authUser(sellerFields, role, mode))
+                const sellerFields = { name, email, password, role, shopName };
+                dispatch(authUser(sellerFields, role, mode));
+            } else {
+                const customerFields = { name, email, password, role };
+                dispatch(authUser(customerFields, role, mode));
             }
-            else {
-                const customerFields = { name, email, password, role }
-
-                dispatch(authUser(customerFields, role, mode))
-            }
+        } else if (mode === "Login") {
+            const fields = { email, password };
+            dispatch(authUser(fields, role, mode));
         }
-        else if (mode === "Login") {
-            const fields = { email, password }
-            dispatch(authUser(fields, role, mode))
-        }
-        setLoader(true)
+        setLoader(true);
     };
 
     const handleInputChange = (event) => {
-        const { name } = event.target;
+        const { name, value } = event.target;
         if (name === 'email') setEmailError(false);
-        if (name === 'password') setPasswordError(false);
+        if (name === 'password') {
+            setPasswordError(false);
+            assessPasswordStrength(value); // Check strength on input change
+        }
         if (name === 'userName') setUserNameError(false);
         if (name === 'shopName') setShopNameError(false);
+    };
+
+    const assessPasswordStrength = (password) => {
+        const result = zxcvbn(password);
+        setPasswordStrength(result.score); // Get the strength score
+    };
+
+    const onCaptchaChange = (value) => {
+        setCaptchaValue(value);  // Set the captcha value when completed
     };
 
     useEffect(() => {
         if (status === 'success' && currentRole !== null) {
             navigate('/');
-        }
-        else if (status === 'failed') {
-            setMessage(response)
-            setShowPopup(true)
-            setLoader(false)
-        }
-        else if (status === 'error') {
-            setLoader(false)
-            setMessage("Network Error")
-            setShowPopup(true)
+        } else if (status === 'failed') {
+            setMessage(response);
+            setShowPopup(true);
+            setLoader(false);
+        } else if (status === 'error') {
+            setLoader(false);
+            setMessage("Network Error");
+            setShowPopup(true);
         }
     }, [status, currentUser, currentRole, navigate, error, response]);
 
@@ -114,28 +130,28 @@ const AuthenticationPage = ({ mode, role }) => {
                             {role} {mode}
                         </StyledTypography>
 
-                        {role === "Seller" && mode === "Register" &&
+                        {role === "Seller" && mode === "Register" && (
                             <Typography variant="h7">
-                                Create your own shop by registering as an seller.
+                                Create your own shop by registering as a seller.
                                 <br />
                                 You will be able to add products and sell them.
                             </Typography>
-                        }
+                        )}
 
-                        {role === "Customer" && mode === "Register" &&
+                        {role === "Customer" && mode === "Register" && (
                             <Typography variant="h7">
                                 Register now to explore and buy products.
                             </Typography>
-                        }
+                        )}
 
-                        {mode === "Login" &&
+                        {mode === "Login" && (
                             <Typography variant="h7">
-                                Welcome back! Please enter your details
+                                Welcome back! Please enter your details.
                             </Typography>
-                        }
+                        )}
 
                         <Box component="form" noValidate onSubmit={handleSubmit} sx={{ mt: 2 }}>
-                            {mode === "Register" &&
+                            {mode === "Register" && (
                                 <TextField
                                     margin="normal"
                                     required
@@ -150,8 +166,8 @@ const AuthenticationPage = ({ mode, role }) => {
                                     helperText={userNameError && 'Name is required'}
                                     onChange={handleInputChange}
                                 />
-                            }
-                            {mode === "Register" && role === "Seller" &&
+                            )}
+                            {mode === "Register" && role === "Seller" && (
                                 <TextField
                                     margin="normal"
                                     required
@@ -165,7 +181,7 @@ const AuthenticationPage = ({ mode, role }) => {
                                     helperText={shopNameError && 'Shop name is required'}
                                     onChange={handleInputChange}
                                 />
-                            }
+                            )}
                             <TextField
                                 margin="normal"
                                 required
@@ -196,22 +212,43 @@ const AuthenticationPage = ({ mode, role }) => {
                                     endAdornment: (
                                         <InputAdornment position="end">
                                             <IconButton onClick={() => setToggle(!toggle)}>
-                                                {toggle ? (
-                                                    <Visibility />
-                                                ) : (
-                                                    <VisibilityOff />
-                                                )}
+                                                {toggle ? <Visibility /> : <VisibilityOff />}
                                             </IconButton>
                                         </InputAdornment>
                                     ),
                                 }}
                             />
+                            
+                            {/* Password Strength Assessment (Only for Register mode) */}
+                            {mode === "Register" && passwordStrength !== undefined && (
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        color: passwordStrength === 4 ? 'green' : passwordStrength > 0 ? 'red' : 'black'
+                                    }}
+                                >
+                                    {passwordStrength === 4
+                                        ? "Password is strong!"
+                                        : passwordStrength > 0
+                                        ? "Password is weak. Try using a mix of letters, numbers, and symbols."
+                                        : ""
+                                    }
+                                </Typography>
+                            )}
+
                             <Grid container sx={{ display: "flex", justifyContent: "space-between" }}>
                                 <FormControlLabel
                                     control={<Checkbox value="remember" color="primary" />}
                                     label="Remember me"
                                 />
                             </Grid>
+
+                            {/* Add reCAPTCHA component */}
+                            <ReCAPTCHA
+                                sitekey="6LdjS7sqAAAAAGbSewbMxGFpVyEoVK7CMAHwsCjc" // Replace with your reCAPTCHA site key
+                                onChange={onCaptchaChange}
+                            />
+
                             <LightPurpleButton
                                 type="submit"
                                 fullWidth
@@ -222,22 +259,14 @@ const AuthenticationPage = ({ mode, role }) => {
                             </LightPurpleButton>
                             <Grid container>
                                 <Grid>
-                                    {mode === "Register" ?
-                                        "Already have an account?"
-                                        :
-                                        "Don't have an account?"
-                                    }
+                                    {mode === "Register" ? "Already have an account?" : "Don't have an account?"}
                                 </Grid>
                                 <Grid item sx={{ ml: 2 }}>
-                                    {mode === "Register" ?
-                                        <StyledLink to={`/${role}login`}>
-                                            Log in
-                                        </StyledLink>
-                                        :
-                                        <StyledLink to={`/${role}register`}>
-                                            Sign up
-                                        </StyledLink>
-                                    }
+                                    {mode === "Register" ? (
+                                        <StyledLink to={`/${role}login`}>Log in</StyledLink>
+                                    ) : (
+                                        <StyledLink to={`/${role}register`}>Sign up</StyledLink>
+                                    )}
                                 </Grid>
                             </Grid>
                         </Box>
@@ -261,14 +290,14 @@ const AuthenticationPage = ({ mode, role }) => {
             <Popup message={message} setShowPopup={setShowPopup} showPopup={showPopup} />
         </>
     );
-}
+};
 
-export default AuthenticationPage
+export default AuthenticationPage;
 
 const StyledLink = styled(Link)`
-  margin-top: 9px;
-  text-decoration: none;
-  color: #7f56da;
+    margin-top: 9px;
+    text-decoration: none;
+    color: #7f56da;
 `;
 
 const StyledTypography = styled.h4`
